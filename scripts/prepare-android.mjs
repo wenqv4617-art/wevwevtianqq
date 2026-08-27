@@ -232,8 +232,30 @@ const upsertMainActivitySoftInputMode = (manifest) => {
   });
 };
 
+const upsertDiscordOAuthDeepLink = (manifest, appId) => {
+  const activityPattern = /<activity\b(?=[^>]*android:name="(?:\.MainActivity|[^"]*\.MainActivity)")[^>]*>/;
+  const existingDeepLink = new RegExp(
+    `<data\\s+[^>]*android:scheme="${appId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[^>]*android:host="auth"[^>]*android:path="/callback"[^>]*/?>`
+  );
+
+  if (!activityPattern.test(manifest) || existingDeepLink.test(manifest)) {
+    return manifest;
+  }
+
+  const intentFilter = `
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="${appId}" android:host="auth" android:path="/callback" />
+            </intent-filter>`;
+
+  return manifest.replace(activityPattern, (activityTag) => `${activityTag}${intentFilter}`);
+};
+
 const upsertAndroidManifestEntries = async () => {
   let manifest = ensureAndroidManifestToolsNamespace(await fs.readFile(manifestPath, 'utf8'));
+  const appId = await resolveAndroidPackageName();
 
   const notificationIconMeta = 'android:name="com.google.firebase.messaging.default_notification_icon"';
   const channelMeta = 'android:name="com.google.firebase.messaging.default_notification_channel_id"';
@@ -270,6 +292,7 @@ const upsertAndroidManifestEntries = async () => {
   manifest = upsertServiceDeclaration(manifest);
   manifest = upsertFirebaseMessagingServiceDeclaration(manifest);
   manifest = upsertMainActivitySoftInputMode(manifest);
+  manifest = upsertDiscordOAuthDeepLink(manifest, appId);
 
   await fs.writeFile(manifestPath, manifest, 'utf8');
 };
